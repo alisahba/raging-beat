@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAGING BEAT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black: #000;
+      --white: #fff;
+      --dim:   #2a2a2a;
+      --muted: #555;
+      --font:  'DM Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--font);
+      font-weight: 300;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: center;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--dim);
+    }
+
+    .wordmark {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .35em;
+      color: var(--white);
+    }
+
+    .tagline {
+      font-size: 10px;
+      letter-spacing: .2em;
+      color: var(--muted);
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .beat-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--white);
+      border-radius: 50%;
+      justify-self: end;
+      opacity: 0;
+      transition: opacity 60ms ease-out;
+    }
+    .beat-dot.flash { opacity: 1; }
+
+    /* ── Canvas stage ── */
+    .stage {
+      flex: 1;
+      min-height: 0;
+      background: #0a0a0a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 12px;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      height: 100%;
+      width: auto;
+      max-width: 100%;
+      aspect-ratio: 3 / 4;
+    }
+    .canvas-wrap.no-image { cursor: pointer; }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    canvas.smooth { image-rendering: auto; }
+
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      pointer-events: none;
+      border: 1px solid var(--dim);
+    }
+
+    .empty-state p {
+      font-size: 10px;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      color: #333;
+    }
+
+    .empty-state .cross {
+      width: 24px;
+      height: 24px;
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .empty-state .cross::before,
+    .empty-state .cross::after {
+      content: '';
+      position: absolute;
+      background: #333;
+    }
+    .empty-state .cross::before { width: 1px; height: 100%; left: 50%; }
+    .empty-state .cross::after  { height: 1px; width: 100%; top: 50%; }
+
+    /* ── Controls ── */
+    .controls { border-top: 1px solid var(--dim); }
+
+    .ctrl-row {
+      display: grid;
+      border-bottom: 1px solid var(--dim);
+    }
+    .ctrl-row:last-child { border-bottom: none; }
+    .ctrl-row--2 { grid-template-columns: 1fr 1fr; }
+    .ctrl-row--4 { grid-template-columns: repeat(4, 1fr); }
+
+    /* ── Media slots ── */
+    .img-slots { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .img-slot {
+      width: 28px;
+      height: 28px;
+      border: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      flex-shrink: 0;
+      font-size: 9px;
+      font-weight: 700;
+      color: #444;
+      letter-spacing: .05em;
+      transition: border-color 80ms, color 80ms;
+    }
+    .img-slot:hover  { border-color: #888; color: #888; }
+    .img-slot input  { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .img-slot.loaded { border-color: #666; color: #666; }
+    .img-slot.active { border-color: var(--white); color: var(--white); }
+
+    /* ── Dual-handle range slider ── */
+    .dual-range { position: relative; height: 18px; width: 100%; }
+
+    .dual-range-track {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--dim);
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .dual-range-fill { position: absolute; height: 100%; background: var(--white); }
+
+    .dual-range input[type="range"] {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      transform: translateY(-50%);
+      background: transparent;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .dual-range input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px; height: 10px;
+      background: var(--white);
+      cursor: pointer;
+      pointer-events: all;
+    }
+    .dual-range input[type="range"]::-moz-range-thumb {
+      width: 10px; height: 10px;
+      background: var(--white);
+      border: none;
+      cursor: pointer;
+      pointer-events: all;
+    }
+
+    .control-cell {
+      padding: 14px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-right: 1px solid var(--dim);
+    }
+    .ctrl-row > .control-cell:last-child { border-right: none; }
+
+    .control-cell.disabled { opacity: 0.3; pointer-events: none; user-select: none; }
+
+    .toggle-btn {
+      background: none;
+      border: 1px solid #333;
+      color: #555;
+      font-family: inherit;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      cursor: pointer;
+      width: fit-content;
+      transition: border-color 80ms, color 80ms, background 80ms;
+    }
+    .toggle-btn.on { border-color: #fff; color: #fff; background: rgba(255,255,255,.08); }
+
+    .ctrl-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      color: var(--white);
+    }
+
+    .file-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .file-btn-inner { display: flex; align-items: center; gap: 10px; }
+
+    .file-btn-square {
+      width: 28px; height: 28px;
+      background: var(--dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: filter 100ms;
+    }
+    .file-btn:hover .file-btn-square { filter: invert(1); }
+    .file-btn-square svg { fill: var(--white); }
+
+    .file-name {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: .05em;
+      max-width: 260px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-name.loaded { color: var(--white); }
+
+    /* ── Player ── */
+    .player {
+      border-top: 1px solid var(--dim);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .play-btn {
+      width: 32px; height: 32px;
+      background: var(--white);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: filter 80ms;
+    }
+    .play-btn:hover { filter: invert(1); }
+    .play-btn svg { fill: var(--black); display: block; }
+
+    .scrub-wrap { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 2px;
+      background: var(--dim);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px; height: 10px;
+      background: var(--white);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 10px; height: 10px;
+      background: var(--white);
+      border: none;
+      cursor: pointer;
+    }
+
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: .1em;
+    }
+
+    .status-row { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+
+    .status-label {
+      font-size: 9px;
+      letter-spacing: .2em;
+      color: var(--white);
+      text-transform: uppercase;
+      min-width: 60px;
+      text-align: right;
+    }
+
+    .px-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      color: var(--white);
+      min-width: 48px;
+      text-align: left;
+    }
+
+    /* ── Record button ── */
+    .rec-btn {
+      width: 32px; height: 32px;
+      background: none;
+      border: 1px solid #333;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: border-color 80ms;
+    }
+    .rec-btn:hover { border-color: #888; }
+    .rec-btn .rec-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 80ms, transform 80ms;
+    }
+    .rec-btn.recording { border-color: #fff; }
+    .rec-btn.recording .rec-dot { background: #ff3333; transform: scale(1.2); }
+
+    /* ── Swatches ── */
+    .swatches { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+    .swatch {
+      width: 20px; height: 20px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform 80ms, border-color 80ms;
+      flex-shrink: 0;
+    }
+    .swatch:hover { transform: scale(1.15); }
+    .swatch.active { border-color: var(--white); outline: 1px solid #666; outline-offset: 2px; }
+    .swatch[data-color="#000000"] { border-color: #333; }
+    .swatch.dim { opacity: 0.2; }
+    .swatch.pool-active { border-color: var(--white); outline: 1px solid #666; outline-offset: 2px; opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="wordmark">RAGING BEAT</span>
+    <span class="tagline">Beat-Reactive Visual Renderer</span>
+    <div class="beat-dot" id="beatDot"></div>
+  </header>
+
+  <div class="stage">
+    <div class="canvas-wrap no-image" id="canvasWrap">
+      <canvas id="canvas" width="1080" height="1440"></canvas>
+      <div class="empty-state" id="emptyState">
+        <div class="cross"></div>
+        <p>Upload image or video to begin</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+
+    <!-- Row 1: Media + Audio -->
+    <div class="ctrl-row ctrl-row--2">
+      <div class="control-cell">
+        <span class="ctrl-label">Media</span>
+        <div class="img-slots">
+          <label class="img-slot" id="imgSlot0" title="Slot 1"><input type="file" class="slot-input" data-slot="0" accept="image/*,video/*" multiple><span>1</span></label>
+          <label class="img-slot" id="imgSlot1" title="Slot 2"><input type="file" class="slot-input" data-slot="1" accept="image/*,video/*" multiple><span>2</span></label>
+          <label class="img-slot" id="imgSlot2" title="Slot 3"><input type="file" class="slot-input" data-slot="2" accept="image/*,video/*" multiple><span>3</span></label>
+          <label class="img-slot" id="imgSlot3" title="Slot 4"><input type="file" class="slot-input" data-slot="3" accept="image/*,video/*" multiple><span>4</span></label>
+          <label class="img-slot" id="imgSlot4" title="Slot 5"><input type="file" class="slot-input" data-slot="4" accept="image/*,video/*" multiple><span>5</span></label>
+          <label class="img-slot" id="imgSlot5" title="Slot 6"><input type="file" class="slot-input" data-slot="5" accept="image/*,video/*" multiple><span>6</span></label>
+          <label class="img-slot" id="imgSlot6" title="Slot 7"><input type="file" class="slot-input" data-slot="6" accept="image/*,video/*" multiple><span>7</span></label>
+          <label class="img-slot" id="imgSlot7" title="Slot 8"><input type="file" class="slot-input" data-slot="7" accept="image/*,video/*" multiple><span>8</span></label>
+          <label class="img-slot" id="imgSlot8" title="Slot 9"><input type="file" class="slot-input" data-slot="8" accept="image/*,video/*" multiple><span>9</span></label>
+          <label class="img-slot" id="imgSlot9" title="Slot 10"><input type="file" class="slot-input" data-slot="9" accept="image/*,video/*" multiple><span>10</span></label>
+        </div>
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Audio</span>
+        <label class="file-btn">
+          <input type="file" id="audioInput" accept="audio/*">
+          <div class="file-btn-inner">
+            <div class="file-btn-square">
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <rect x="1" y="3" width="10" height="8" fill="none" stroke="white" stroke-width="1"/>
+                <polygon points="4,3 6,0 8,3"/>
+              </svg>
+            </div>
+            <span class="file-name" id="audioFilename">Choose audio</span>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Row 2: Color controls -->
+    <div class="ctrl-row ctrl-row--4">
+      <div class="control-cell" id="darkColorCell">
+        <span class="ctrl-label">Dark Color</span>
+        <div class="swatches" id="darkSwatches">
+          <div class="swatch active" data-color="#000000" style="background:#000000" title="Black"></div>
+          <div class="swatch"        data-color="#ffffff" style="background:#ffffff" title="White"></div>
+          <div class="swatch"        data-color="#ff0000" style="background:#ff0000" title="Red"></div>
+          <div class="swatch"        data-color="#00ff00" style="background:#00ff00" title="Green"></div>
+          <div class="swatch"        data-color="#0000ff" style="background:#0000ff" title="Blue"></div>
+        </div>
+      </div>
+      <div class="control-cell" id="lightColorCell">
+        <span class="ctrl-label">Light Color</span>
+        <div class="swatches" id="lightSwatches">
+          <div class="swatch"        data-color="#000000" style="background:#000000" title="Black"></div>
+          <div class="swatch active" data-color="#ffffff" style="background:#ffffff" title="White"></div>
+          <div class="swatch"        data-color="#ff0000" style="background:#ff0000" title="Red"></div>
+          <div class="swatch"        data-color="#00ff00" style="background:#00ff00" title="Green"></div>
+          <div class="swatch"        data-color="#0000ff" style="background:#0000ff" title="Blue"></div>
+        </div>
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Random Colors</span>
+        <button id="randomizeBtn" class="toggle-btn">Off</button>
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Halftone</span>
+        <button id="halftoneBtn" class="toggle-btn">Off</button>
+      </div>
+    </div>
+
+    <!-- Row 3: Beat & FX -->
+    <div class="ctrl-row" style="grid-template-columns: 1fr 1fr 1fr 1fr">
+      <div class="control-cell">
+        <span class="ctrl-label">Beat Sens. <span id="beatSensValue">74</span></span>
+        <input type="range" id="beatSensSlider" min="0" max="100" value="74" step="1">
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Contrast <span id="thresholdValue">128</span></span>
+        <input type="range" id="thresholdSlider" min="0" max="255" value="128" step="1">
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Image Dwell &nbsp;<span id="dwellValue">2.0</span>s</span>
+        <input type="range" id="dwellSlider" min="0.5" max="10" value="2" step="0.5">
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Pixel Range &nbsp;<span id="minSizeValue">1</span>–<span id="maxSizeValue">128</span>px</span>
+        <div class="dual-range">
+          <div class="dual-range-track"><div class="dual-range-fill" id="pixelRangeFill"></div></div>
+          <input type="range" id="minSizeSlider" min="0" max="7" value="0" step="1">
+          <input type="range" id="maxSizeSlider" min="0" max="7" value="7" step="1">
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="player" id="player">
+    <button class="play-btn" id="playBtn" title="Play / Pause">
+      <svg id="playIcon" width="14" height="14" viewBox="0 0 14 14">
+        <polygon points="3,1 13,7 3,13"/>
+      </svg>
+    </button>
+    <button class="rec-btn" id="recBtn" title="Record / Stop &amp; Save">
+      <div class="rec-dot"></div>
+    </button>
+    <div class="scrub-wrap">
+      <input type="range" id="scrubber" min="0" max="1000" value="0" step="1">
+      <div class="time-row">
+        <span id="currentTime">0:00</span>
+        <span id="totalTime">0:00</span>
+      </div>
+    </div>
+    <div class="status-row">
+      <span class="status-label" id="statusLabel">Ready</span>
+      <span class="px-badge" id="pxBadge"></span>
+    </div>
+  </div>
+
+  <script>
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const W = 1080, H = 1440;
+    const PIXEL_SIZES    = [1, 2, 4, 8, 16, 32, 64, 128];
+    const BASS_LOW_BIN   = 1;    // ~43 Hz
+    const BASS_HIGH_BIN  = 5;    // ~215 Hz
+    const MIN_FLUX       = 3;
+    const FLUX_HISTORY   = 90;
+    let   FLUX_THRESHOLD = 1.6;
+    let   BEAT_COOLDOWN_MS = 280;
+
+    const PALETTE = [[0,0,0],[255,255,255],[255,0,0],[0,255,0],[0,0,255]];
+
+    // ─── DOM ──────────────────────────────────────────────────────────────────
+    const canvas          = document.getElementById('canvas');
+    const ctx             = canvas.getContext('2d');
+    const emptyState      = document.getElementById('emptyState');
+    const canvasWrap      = document.getElementById('canvasWrap');
+    const beatDot         = document.getElementById('beatDot');
+    const audioInput      = document.getElementById('audioInput');
+    const audioFilename   = document.getElementById('audioFilename');
+    const playBtn         = document.getElementById('playBtn');
+    const playIcon        = document.getElementById('playIcon');
+    const scrubber        = document.getElementById('scrubber');
+    const currentTimeEl   = document.getElementById('currentTime');
+    const totalTimeEl     = document.getElementById('totalTime');
+    const statusLabel     = document.getElementById('statusLabel');
+    const pxBadge         = document.getElementById('pxBadge');
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdValue  = document.getElementById('thresholdValue');
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    // Each slot: null | { type:'image', canvas } | { type:'video', el }
+    const imageSlots   = [null, null, null, null, null, null, null, null, null, null];
+    let processedCanvas = null;
+    let currentSlot    = -1;
+    let lastSwitchTime = 0;
+    let imageDwellMs   = 2000;
+    let threshold      = 128;
+    const slotContrast = [128, 128, 128, 128, 128, 128, 128, 128, 128, 128];
+    let darkColor      = [0, 0, 0];
+    let lightColor     = [255, 255, 255];
+    let currentPixelSize = 1;
+    let minSize = 1, maxSize = 128;
+    let audioCtx        = null;
+    let analyser        = null;
+    let audioEl         = null;
+    let audioSourceNode = null;
+    let mediaRecorder   = null;
+    let recordedChunks  = [];
+    let audioRecordDest = null;
+    let isPlaying      = false;
+    let rafId          = null;
+    let beatOnCooldown = false;
+    let prevBassEnergy = 0;
+    let fluxHistory    = [];
+    let halftone       = false;
+    let grayscaleCanvas = null;
+    let randomizeColors = false;
+    let darkPool       = new Set();
+    let lightPool      = new Set();
+    let isScrubbing    = false;
+
+    // ─── Offscreen canvases ───────────────────────────────────────────────────
+    const colorCanvas    = document.createElement('canvas');
+    colorCanvas.width = W; colorCanvas.height = H;
+    const colorCtx       = colorCanvas.getContext('2d');
+
+    const tiny           = document.createElement('canvas');
+    const tiny2d         = tiny.getContext('2d');
+
+    const videoScratch   = document.createElement('canvas');
+    videoScratch.width = W; videoScratch.height = H;
+    const videoScratch2d = videoScratch.getContext('2d');
+
+    // ─── Init ─────────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    // ─── Image / video processing ─────────────────────────────────────────────
+    function coverDraw(ctx2d, source) {
+      const srcW = source.videoWidth  ?? source.naturalWidth  ?? source.width;
+      const srcH = source.videoHeight ?? source.naturalHeight ?? source.height;
+      const srcAR = srcW / srcH, dstAR = W / H;
+      let sx, sy, sw, sh;
+      if (srcAR > dstAR) { sh = srcH; sw = sh * dstAR; sx = (srcW - sw) / 2; sy = 0; }
+      else               { sw = srcW; sh = sw / dstAR; sx = 0; sy = (srcH - sh) / 2; }
+      ctx2d.drawImage(source, sx, sy, sw, sh, 0, 0, W, H);
+    }
+
+    function toGrayscaleInPlace(ctx2d) {
+      const id = ctx2d.getImageData(0, 0, W, H), d = id.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        d[i] = d[i+1] = d[i+2] = lum; d[i+3] = 255;
+      }
+      ctx2d.putImageData(id, 0, 0);
+    }
+
+    function buildGrayscale(img) {
+      const gc = document.createElement('canvas');
+      gc.width = W; gc.height = H;
+      const gc2d = gc.getContext('2d');
+      coverDraw(gc2d, img);
+      toGrayscaleInPlace(gc2d);
+      return gc;
+    }
+
+    function extractVideoFrame(videoEl) {
+      if (!videoEl.videoWidth) return null;
+      coverDraw(videoScratch2d, videoEl);
+      toGrayscaleInPlace(videoScratch2d);
+      return videoScratch;
+    }
+
+    function activateSlot(idx) {
+      currentSlot = idx;
+      const slot = imageSlots[idx];
+      if (slot.type === 'video') {
+        grayscaleCanvas = extractVideoFrame(slot.el) ?? grayscaleCanvas;
+      } else {
+        grayscaleCanvas = slot.canvas;
+      }
+      threshold = slotContrast[idx];
+      thresholdSlider.value = threshold;
+      thresholdValue.textContent = threshold;
+      applyColors();
+      renderPixelSize(currentPixelSize);
+      document.querySelectorAll('.img-slot').forEach((el, i) =>
+        el.classList.toggle('active', i === idx));
+    }
+
+    function applyColors() {
+      if (!grayscaleCanvas) return;
+      colorCtx.drawImage(grayscaleCanvas, 0, 0);
+      const id = colorCtx.getImageData(0, 0, W, H);
+      const d = id.data, lt = threshold, dc = darkColor, lc = lightColor;
+      for (let i = 0; i < d.length; i += 4) {
+        const c = d[i] > lt ? lc : dc;
+        d[i] = c[0]; d[i+1] = c[1]; d[i+2] = c[2]; d[i+3] = 255;
+      }
+      colorCtx.putImageData(id, 0, 0);
+      processedCanvas = colorCanvas;
+    }
+
+    function renderPixelSize(size) {
+      if (!processedCanvas) return;
+      if (halftone) { renderHalftone(size); return; }
+
+      ctx.imageSmoothingEnabled = false;
+      if (size <= 1) { ctx.drawImage(processedCanvas, 0, 0); return; }
+
+      const cols = Math.ceil(W / size), rows = Math.ceil(H / size);
+      tiny.width = cols; tiny.height = rows;
+      tiny2d.imageSmoothingEnabled = false;
+      tiny2d.drawImage(processedCanvas, 0, 0, cols, rows);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(tiny, 0, 0, W, H);
+    }
+
+    function renderHalftone(cellSize) {
+      if (!grayscaleCanvas) return;
+      cellSize = Math.min(Math.max(cellSize, minSize, 8), maxSize);
+      const dc = darkColor, lc = lightColor;
+      ctx.fillStyle = `rgb(${dc[0]},${dc[1]},${dc[2]})`;
+      ctx.fillRect(0, 0, W, H);
+
+      const cols = Math.ceil(W / cellSize), rows = Math.ceil(H / cellSize);
+      tiny.width = cols; tiny.height = rows;
+      tiny2d.imageSmoothingEnabled = true;
+      tiny2d.drawImage(grayscaleCanvas, 0, 0, cols, rows);
+      const pd = tiny2d.getImageData(0, 0, cols, rows).data;
+
+      const half = cellSize / 2;
+      ctx.fillStyle = `rgb(${lc[0]},${lc[1]},${lc[2]})`;
+      ctx.beginPath();
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const lum = pd[(r * cols + c) * 4];
+          if (lum <= threshold) continue;
+          const normalized = (lum - threshold) / (255 - threshold);
+          const jitter = (Math.random() - 0.5) * half * 0.5;
+          const radius = Math.max(0, normalized * half * 0.95 + jitter);
+          if (radius < 0.4) continue;
+          const cx = c * cellSize + half, cy = r * cellSize + half;
+          ctx.moveTo(cx + radius, cy);
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        }
+      }
+      ctx.fill();
+    }
+
+    // ─── Beat detection (spectral flux) ───────────────────────────────────────
+    function checkBeat() {
+      if (!analyser || beatOnCooldown) return false;
+
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+
+      let sum = 0;
+      for (let i = BASS_LOW_BIN; i <= BASS_HIGH_BIN; i++) sum += data[i];
+      const energy = sum / (BASS_HIGH_BIN - BASS_LOW_BIN + 1);
+
+      const flux = Math.max(0, energy - prevBassEnergy);
+      prevBassEnergy = energy;
+      fluxHistory.push(flux);
+      if (fluxHistory.length > FLUX_HISTORY) fluxHistory.shift();
+
+      const avgFlux = fluxHistory.reduce((a, b) => a + b, 0) / fluxHistory.length;
+      const isBeat  = flux > avgFlux * FLUX_THRESHOLD && flux > MIN_FLUX;
+
+      if (isBeat) {
+        beatOnCooldown = true;
+        setTimeout(() => { beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
+      }
+      return isBeat;
+    }
+
+    function onBeat() {
+      // Switch media slot if multiple loaded and dwell elapsed
+      const loadedIdxs = imageSlots.reduce((a, s, i) => (s ? [...a, i] : a), []);
+      if (loadedIdxs.length > 1 && Date.now() - lastSwitchTime >= imageDwellMs) {
+        const others = loadedIdxs.filter(i => i !== currentSlot);
+        activateSlot(others[Math.floor(Math.random() * others.length)]);
+        lastSwitchTime = Date.now();
+      }
+
+      // Random colors — never the same color for dark and light
+      if (randomizeColors) {
+        const dPool = darkPool.size  ? [...darkPool].map(hexToRgb)  : PALETTE;
+        const lPool = lightPool.size ? [...lightPool].map(hexToRgb) : PALETTE;
+        darkColor = dPool[Math.floor(Math.random() * dPool.length)];
+        const lCandidates = lPool.filter(c => c.join() !== darkColor.join());
+        // If the light pool has no option different from dark, expand to full palette
+        const lFinal = lCandidates.length
+          ? lCandidates
+          : PALETTE.filter(c => c.join() !== darkColor.join());
+        lightColor = lFinal[Math.floor(Math.random() * lFinal.length)];
+        applyColors();
+      }
+
+      // Pixel size jump
+      const inRange = PIXEL_SIZES.filter(s => s >= minSize && s <= maxSize);
+      const choices  = inRange.filter(s => s !== currentPixelSize);
+      const pool     = choices.length ? choices : inRange;
+      currentPixelSize = pool[Math.floor(Math.random() * pool.length)];
+      renderPixelSize(currentPixelSize);
+      pxBadge.textContent = currentPixelSize + 'PX';
+
+      beatDot.classList.add('flash');
+      setTimeout(() => beatDot.classList.remove('flash'), 80);
+    }
+
+    // ─── Animation loop ───────────────────────────────────────────────────────
+    function tick() {
+      // Update canvas from current video frame each tick
+      if (currentSlot >= 0 && imageSlots[currentSlot]?.type === 'video') {
+        const frame = extractVideoFrame(imageSlots[currentSlot].el);
+        if (frame) {
+          grayscaleCanvas = frame;
+          applyColors();
+          renderPixelSize(currentPixelSize);
+        }
+      }
+
+      if (checkBeat()) onBeat();
+
+      if (audioEl && audioEl.duration && !isScrubbing) {
+        scrubber.value = Math.round((audioEl.currentTime / audioEl.duration) * 1000);
+        currentTimeEl.textContent = fmt(audioEl.currentTime);
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    // ─── Audio setup ──────────────────────────────────────────────────────────
+    function setupAudio(file) {
+      if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+      if (audioCtx) audioCtx.close();
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+
+      audioEl = new Audio();
+      audioEl.src = URL.createObjectURL(file);
+
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioSourceNode = audioCtx.createMediaElementSource(audioEl);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.75;
+      audioSourceNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      audioEl.addEventListener('loadedmetadata', () => {
+        totalTimeEl.textContent = fmt(audioEl.duration);
+      });
+      audioEl.addEventListener('ended', () => {
+        isPlaying = false;
+        setPlayIcon(false);
+        statusLabel.textContent = 'Done';
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      });
+
+      statusLabel.textContent = 'Ready';
+      isPlaying = false;
+      setPlayIcon(false);
+    }
+
+    // ─── Player controls ──────────────────────────────────────────────────────
+    function togglePlay() {
+      if (!audioEl) return;
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (isPlaying) {
+        audioEl.pause();
+        cancelAnimationFrame(rafId); rafId = null;
+        isPlaying = false;
+        statusLabel.textContent = 'Paused';
+      } else {
+        audioEl.play();
+        rafId = requestAnimationFrame(tick);
+        isPlaying = true;
+        statusLabel.textContent = 'Playing';
+      }
+      setPlayIcon(isPlaying);
+    }
+
+    function setPlayIcon(playing) {
+      playIcon.innerHTML = playing
+        ? '<rect x="2" y="1" width="4" height="12"/><rect x="8" y="1" width="4" height="12"/>'
+        : '<polygon points="3,1 13,7 3,13"/>';
+    }
+
+    playBtn.addEventListener('click', togglePlay);
+
+    scrubber.addEventListener('mousedown', () => { isScrubbing = true; });
+    scrubber.addEventListener('touchstart', () => { isScrubbing = true; });
+    scrubber.addEventListener('input', () => {
+      if (audioEl && audioEl.duration) {
+        audioEl.currentTime = (scrubber.value / 1000) * audioEl.duration;
+        currentTimeEl.textContent = fmt(audioEl.currentTime);
+      }
+    });
+    scrubber.addEventListener('mouseup',  () => { isScrubbing = false; });
+    scrubber.addEventListener('touchend', () => { isScrubbing = false; });
+
+    // ─── File inputs ──────────────────────────────────────────────────────────
+    document.querySelectorAll('.slot-input').forEach(input => {
+      input.addEventListener('change', e => {
+        const files    = Array.from(e.target.files);
+        if (!files.length) return;
+        const startIdx = parseInt(e.target.dataset.slot);
+
+        files.forEach((file, offset) => {
+          const idx = startIdx + offset;
+          if (idx >= imageSlots.length) return;
+          const slotEl = document.getElementById(`imgSlot${idx}`);
+
+          function onSlotReady() {
+            slotEl.classList.add('loaded');
+            slotEl.title = file.name;
+            if (currentSlot === -1) {
+              currentPixelSize = 1;
+              pxBadge.textContent = '1PX';
+              emptyState.style.display = 'none';
+              canvasWrap.classList.remove('no-image');
+              lastSwitchTime = Date.now();
+            }
+            activateSlot(idx);
+          }
+
+          if (file.type.startsWith('video/')) {
+            const vid = document.createElement('video');
+            vid.src = URL.createObjectURL(file);
+            vid.loop = true;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.addEventListener('loadeddata', () => {
+              vid.play();
+              imageSlots[idx] = { type: 'video', el: vid };
+              onSlotReady();
+            }, { once: true });
+          } else {
+            const img = new Image();
+            img.onload = () => {
+              imageSlots[idx] = { type: 'image', canvas: buildGrayscale(img) };
+              onSlotReady();
+            };
+            img.src = URL.createObjectURL(file);
+          }
+        });
+      });
+    });
+
+    audioInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      audioFilename.textContent = file.name;
+      audioFilename.classList.add('loaded');
+      setupAudio(file);
+    });
+
+    canvasWrap.addEventListener('click', () => {
+      if (currentSlot === -1)
+        document.querySelector('.slot-input[data-slot="0"]').click();
+    });
+
+    // ─── Randomize colors toggle ──────────────────────────────────────────────
+    const randomizeBtn = document.getElementById('randomizeBtn');
+
+    function applySwatchPoolVisuals(containerId, pool) {
+      document.querySelectorAll(`#${containerId} .swatch`).forEach(sw => {
+        sw.classList.remove('dim', 'pool-active', 'active');
+        if (randomizeColors)
+          sw.classList.add(pool.size === 0 || pool.has(sw.dataset.color) ? 'pool-active' : 'dim');
+      });
+    }
+
+    randomizeBtn.addEventListener('click', () => {
+      randomizeColors = !randomizeColors;
+      randomizeBtn.classList.toggle('on', randomizeColors);
+      randomizeBtn.textContent = randomizeColors ? 'On' : 'Off';
+
+      if (randomizeColors) {
+        darkPool.clear(); lightPool.clear();
+        applySwatchPoolVisuals('darkSwatches', darkPool);
+        applySwatchPoolVisuals('lightSwatches', lightPool);
+      } else {
+        document.querySelectorAll('#darkSwatches .swatch, #lightSwatches .swatch')
+          .forEach(sw => sw.classList.remove('dim', 'pool-active'));
+        document.querySelectorAll('#darkSwatches .swatch').forEach(sw => {
+          if (hexToRgb(sw.dataset.color).every((v, i) => v === darkColor[i]))
+            sw.classList.add('active');
+        });
+        document.querySelectorAll('#lightSwatches .swatch').forEach(sw => {
+          if (hexToRgb(sw.dataset.color).every((v, i) => v === lightColor[i]))
+            sw.classList.add('active');
+        });
+      }
+    });
+
+    // ─── Halftone toggle ──────────────────────────────────────────────────────
+    const halftoneBtn = document.getElementById('halftoneBtn');
+    halftoneBtn.addEventListener('click', () => {
+      halftone = !halftone;
+      halftoneBtn.textContent = halftone ? 'On' : 'Off';
+      halftoneBtn.classList.toggle('on', halftone);
+      canvas.classList.toggle('smooth', halftone);
+      if (grayscaleCanvas) renderPixelSize(currentPixelSize);
+    });
+
+    // ─── Colour swatches ──────────────────────────────────────────────────────
+    function hexToRgb(hex) {
+      const n = parseInt(hex.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+
+    function bindSwatches(containerId, pool, onPick) {
+      document.getElementById(containerId).addEventListener('click', e => {
+        const sw = e.target.closest('.swatch');
+        if (!sw) return;
+        if (randomizeColors) {
+          pool.has(sw.dataset.color) ? pool.delete(sw.dataset.color) : pool.add(sw.dataset.color);
+          applySwatchPoolVisuals(containerId, pool);
+        } else {
+          document.querySelectorAll(`#${containerId} .swatch`).forEach(s => s.classList.remove('active'));
+          sw.classList.add('active');
+          onPick(hexToRgb(sw.dataset.color));
+          if (grayscaleCanvas) { applyColors(); renderPixelSize(currentPixelSize); }
+        }
+      });
+    }
+
+    bindSwatches('darkSwatches',  darkPool,  rgb => { darkColor  = rgb; });
+    bindSwatches('lightSwatches', lightPool, rgb => { lightColor = rgb; });
+
+    // ─── Beat sensitivity ─────────────────────────────────────────────────────
+    const beatSensSlider = document.getElementById('beatSensSlider');
+    const beatSensValue  = document.getElementById('beatSensValue');
+    beatSensSlider.addEventListener('input', () => {
+      const v = parseInt(beatSensSlider.value);
+      FLUX_THRESHOLD   = 3.0 - (v / 100) * 1.9;
+      BEAT_COOLDOWN_MS = Math.round(500 - (v / 100) * 350);
+      beatSensValue.textContent = v;
+    });
+
+    // ─── Image dwell ──────────────────────────────────────────────────────────
+    const dwellSlider = document.getElementById('dwellSlider');
+    const dwellValue  = document.getElementById('dwellValue');
+    dwellSlider.addEventListener('input', () => {
+      imageDwellMs = parseFloat(dwellSlider.value) * 1000;
+      dwellValue.textContent = parseFloat(dwellSlider.value).toFixed(1);
+    });
+
+    // ─── Pixel range dual slider ──────────────────────────────────────────────
+    const minSizeSlider  = document.getElementById('minSizeSlider');
+    const maxSizeSlider  = document.getElementById('maxSizeSlider');
+    const minSizeValue   = document.getElementById('minSizeValue');
+    const maxSizeValue   = document.getElementById('maxSizeValue');
+    const pixelRangeFill = document.getElementById('pixelRangeFill');
+    const STEPS = 7;
+
+    function updatePixelRange() {
+      let lo = parseInt(minSizeSlider.value);
+      let hi = parseInt(maxSizeSlider.value);
+      if (lo > hi) { lo = hi; minSizeSlider.value = lo; }
+      minSize = PIXEL_SIZES[lo];
+      maxSize = PIXEL_SIZES[hi];
+      minSizeValue.textContent = minSize;
+      maxSizeValue.textContent = maxSize;
+      pixelRangeFill.style.left  = (lo / STEPS) * 100 + '%';
+      pixelRangeFill.style.width = ((hi - lo) / STEPS) * 100 + '%';
+    }
+
+    minSizeSlider.addEventListener('input', updatePixelRange);
+    maxSizeSlider.addEventListener('input', updatePixelRange);
+    updatePixelRange();
+
+    // ─── Contrast slider ──────────────────────────────────────────────────────
+    thresholdSlider.addEventListener('input', () => {
+      threshold = parseInt(thresholdSlider.value);
+      thresholdValue.textContent = threshold;
+      if (currentSlot !== -1) slotContrast[currentSlot] = threshold;
+      if (grayscaleCanvas) { applyColors(); renderPixelSize(currentPixelSize); }
+    });
+
+    // ─── Recording ───────────────────────────────────────────────────────────
+    const recBtn = document.getElementById('recBtn');
+
+    function startRecording() {
+      const videoStream = canvas.captureStream(30);
+      const tracks = [...videoStream.getVideoTracks()];
+
+      if (audioSourceNode) {
+        audioRecordDest = audioCtx.createMediaStreamDestination();
+        audioSourceNode.connect(audioRecordDest);
+        tracks.push(...audioRecordDest.stream.getAudioTracks());
+      }
+
+      const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+        .find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(new MediaStream(tracks), {
+        mimeType,
+        videoBitsPerSecond: 25_000_000,
+        audioBitsPerSecond: 320_000,
+      });
+
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+
+      mediaRecorder.onstop = () => {
+        if (audioRecordDest) {
+          audioSourceNode.disconnect(audioRecordDest);
+          audioRecordDest = null;
+        }
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = 'raging-beat.webm';
+        a.click();
+        URL.revokeObjectURL(url);
+        recBtn.classList.remove('recording');
+        recBtn.title = 'Record / Stop & Save';
+      };
+
+      mediaRecorder.start(100);
+      recBtn.classList.add('recording');
+      recBtn.title = 'Stop & Save';
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    }
+
+    recBtn.addEventListener('click', () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording();
+      else startRecording();
+    });
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+    function fmt(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+  </script>
+
+</body>
+</html>
