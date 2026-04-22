@@ -316,7 +316,7 @@
       cursor: pointer;
       transition: background 80ms, color 80ms;
     }
-    .mode-btn:first-child { border-right: 1px solid #333; }
+    .mode-btn + .mode-btn { border-left: 1px solid #333; }
     .mode-btn.active { background: rgba(255,255,255,.12); color: #fff; }
 
     .file-btn {
@@ -567,8 +567,13 @@
         <button id="randomizeBtn" class="toggle-btn">Off</button>
       </div>
       <div class="control-cell">
-        <span class="ctrl-label">Halftone</span>
-        <button id="halftoneBtn" class="toggle-btn">Off</button>
+        <span class="ctrl-label">Style</span>
+        <div class="mode-toggle" id="styleToggle">
+          <button class="mode-btn active" data-style="pixels">Pixels</button>
+          <button class="mode-btn" data-style="dots">Dots</button>
+          <button class="mode-btn" data-style="dither">Dither</button>
+          <button class="mode-btn" data-style="slices">Slices</button>
+        </div>
       </div>
     </div>
 
@@ -637,6 +642,8 @@
   <script>
     // ─── Constants ────────────────────────────────────────────────────────────
     const PIXEL_SIZES    = [1, 2, 4, 8, 16, 32, 64, 128];
+    const BAYER4         = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]].map(r => r.map(v => v / 16));
+    const STYLE_MIN_IDX  = { pixels: 0, dots: 3, dither: 1, slices: 3 };
     const BASS_LOW_BIN   = 1;
     const BASS_HIGH_BIN  = 5;
     const FLUX_HISTORY   = 90;
@@ -703,7 +710,7 @@
     let beatOnCooldown   = false;
     let prevBassEnergy   = 0;
     let fluxHistory      = [];
-    let halftone         = false;
+    let renderStyle      = 'pixels';
     let grayscaleCanvas  = null;
     let randomizeColors  = false;
     let darkPool         = new Set();
@@ -836,8 +843,10 @@
     }
 
     function renderPixelSize(size) {
+      if (renderStyle === 'dots')   { renderDots(size);   return; }
+      if (renderStyle === 'dither') { renderDither(size); return; }
+      if (renderStyle === 'slices')  { renderSlices(size);  return; }
       if (!processedCanvas) return;
-      if (halftone) { renderHalftone(size); return; }
       ctx.imageSmoothingEnabled = false;
       if (size <= 1) { ctx.drawImage(processedCanvas, 0, 0); return; }
       const cols = Math.ceil(W / size), rows = Math.ceil(H / size);
@@ -848,7 +857,7 @@
       ctx.drawImage(tiny, 0, 0, W, H);
     }
 
-    function renderHalftone(cellSize) {
+    function renderDots(cellSize) {
       if (!grayscaleCanvas) return;
       cellSize = Math.min(Math.max(cellSize, minSize, 8), maxSize);
       const dc = darkColor, lc = lightColor;
@@ -879,6 +888,75 @@
         }
       }
       ctx.fill();
+    }
+
+    function renderDither(cellSize) {
+      if (!grayscaleCanvas) return;
+      cellSize = Math.max(1, Math.min(cellSize, maxSize));
+      const dc = darkColor, lc = lightColor;
+      const cols = Math.ceil(W / cellSize), rows = Math.ceil(H / cellSize);
+      tiny.width = cols; tiny.height = rows;
+      tiny2d.imageSmoothingEnabled = true;
+      tiny2d.drawImage(grayscaleCanvas, 0, 0, cols, rows);
+      const pd  = tiny2d.getImageData(0, 0, cols, rows).data;
+      const out = ctx.createImageData(W, H);
+      const od  = out.data;
+      const range = Math.max(1, whitePoint - blackPoint);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const lum  = pd[(r * cols + c) * 4];
+          const norm = Math.min(1, Math.max(0, (lum - blackPoint) / range));
+          const threshold = BAYER4[r % 4][c % 4];
+          const isLight   = norm > threshold;
+          const [pr, pg, pb] = isLight ? lc : dc;
+
+          const x0 = c * cellSize, y0 = r * cellSize;
+          const x1 = Math.min(x0 + cellSize, W);
+          const y1 = Math.min(y0 + cellSize, H);
+          for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+              const i = (y * W + x) * 4;
+              od[i]   = pr;
+              od[i+1] = pg;
+              od[i+2] = pb;
+              od[i+3] = 255;
+            }
+          }
+        }
+      }
+      ctx.putImageData(out, 0, 0);
+    }
+
+    function renderSlices(cellSize) {
+      if (!grayscaleCanvas) return;
+      cellSize = Math.max(minSize, Math.min(cellSize, maxSize));
+      const dc = darkColor, lc = lightColor;
+      ctx.fillStyle = `rgb(${dc[0]},${dc[1]},${dc[2]})`;
+      ctx.fillRect(0, 0, W, H);
+
+      const cols = Math.ceil(W / cellSize), rows = Math.ceil(H / cellSize);
+      tiny.width = cols; tiny.height = rows;
+      tiny2d.imageSmoothingEnabled = true;
+      tiny2d.drawImage(grayscaleCanvas, 0, 0, cols, rows);
+      const pd    = tiny2d.getImageData(0, 0, cols, rows).data;
+      const range = Math.max(1, whitePoint - blackPoint);
+      const half  = cellSize / 2;
+
+      // Each cell becomes a horizontal bar — height proportional to luminance
+      // Bright = full bar, dark = thin sliver, giving a venetian-blind effect
+      ctx.fillStyle = `rgb(${lc[0]},${lc[1]},${lc[2]})`;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const lum  = pd[(r * cols + c) * 4];
+          if (lum <= blackPoint) continue;
+          const norm = Math.min(1, (lum - blackPoint) / range);
+          const barH = norm * cellSize;
+          if (barH < 0.5) continue;
+          const cy = r * cellSize + half;
+          ctx.fillRect(c * cellSize, cy - barH / 2, cellSize, barH);
+        }
+      }
     }
 
     // ─── Beat detection (spectral flux) ───────────────────────────────────────
@@ -1278,14 +1356,15 @@
       refreshBothSwatches();
     });
 
-    // ─── Halftone toggle ──────────────────────────────────────────────────────
-    const halftoneBtn = document.getElementById('halftoneBtn');
-    halftoneBtn.addEventListener('click', () => {
-      halftone = !halftone;
-      halftoneBtn.textContent = halftone ? 'On' : 'Off';
-      halftoneBtn.classList.toggle('on', halftone);
-      canvas.classList.toggle('smooth', halftone);
-      if (halftone) updatePixelRange(); // enforce minimum 8px when turning on
+    // ─── Style selector ───────────────────────────────────────────────────────
+    const styleToggle = document.getElementById('styleToggle');
+    styleToggle.addEventListener('click', e => {
+      const btn = e.target.closest('[data-style]');
+      if (!btn) return;
+      renderStyle = btn.dataset.style;
+      styleToggle.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+      canvas.classList.toggle('smooth', renderStyle === 'dots');
+      updatePixelRange();
       if (grayscaleCanvas) renderPixelSize(currentPixelSize);
     });
 
@@ -1372,9 +1451,9 @@
       dwellValue.textContent = v.toFixed(1);
     });
 
-    // Swap z-index so the lo thumb is always grabbable when handles overlap
+    // When handles overlap: put hi on top so it can be dragged right to separate
     function syncDualZ(loSlider, hiSlider) {
-      const onTop = parseInt(loSlider.value) >= parseInt(hiSlider.value) ? loSlider : hiSlider;
+      const onTop = parseInt(loSlider.value) >= parseInt(hiSlider.value) ? hiSlider : loSlider;
       loSlider.style.zIndex = onTop === loSlider ? 2 : 1;
       hiSlider.style.zIndex = onTop === hiSlider ? 2 : 1;
     }
@@ -1387,18 +1466,26 @@
     const pixelRangeFill = document.getElementById('pixelRangeFill');
     const STEPS = 7;
 
-    const HALFTONE_MIN_IDX = 3; // index 3 = 8px — minimum safe size for halftone
-
     function updatePixelRange() {
+      const styleMin = STYLE_MIN_IDX[renderStyle] ?? 0;
+      // Update slider min so the track always spans its full visual width
+      minSizeSlider.min = styleMin;
+      maxSizeSlider.min = styleMin;
+
       let lo = parseInt(minSizeSlider.value);
       let hi = parseInt(maxSizeSlider.value);
-      if (halftone && lo < HALFTONE_MIN_IDX) { lo = HALFTONE_MIN_IDX; minSizeSlider.value = lo; }
-      if (lo > hi) { lo = hi; minSizeSlider.value = lo; }
+      if (lo < styleMin) { lo = styleMin; minSizeSlider.value = lo; }
+      if (hi < styleMin) { hi = styleMin; maxSizeSlider.value = hi; }
+      if (lo > hi)       { lo = hi;       minSizeSlider.value = lo; }
+
       minSize = PIXEL_SIZES[lo]; maxSize = PIXEL_SIZES[hi];
       minSizeValue.textContent = minSize;
       maxSizeValue.textContent = maxSize;
-      pixelRangeFill.style.left  = (lo / STEPS) * 100 + '%';
-      pixelRangeFill.style.width = ((hi - lo) / STEPS) * 100 + '%';
+
+      // Fill is relative to the active range [styleMin … STEPS]
+      const span = STEPS - styleMin;
+      pixelRangeFill.style.left  = span > 0 ? ((lo - styleMin) / span) * 100 + '%' : '0%';
+      pixelRangeFill.style.width = span > 0 ? ((hi - lo)       / span) * 100 + '%' : '100%';
       syncDualZ(minSizeSlider, maxSizeSlider);
     }
 
