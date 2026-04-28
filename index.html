@@ -933,13 +933,13 @@
     let defaultBeatSrc   = null;   // AudioBufferSourceNode for built-in beat
 
     // ─── SoundCloud state ─────────────────────────────────────────────────────
-    let scMode        = false;
-    let scWidget      = null;
-    let scWaveform    = null;
-    let scWaveformMax = 1;
-    let scDuration    = 0;
-    let scAmpHistory  = [];
-    let scPrevIdx     = 0;
+    let scMode         = false;
+    let scWidget       = null;
+    let scWaveform     = null;
+    let scWaveformMax  = 1;
+    let scDuration     = 0;
+    let scBeatPositions = []; // precomputed beat timestamps (ms)
+    let scLastPosition  = 0;  // last known playback position (ms)
 
     // ─── Offscreen canvases ───────────────────────────────────────────────────
     const colorCanvas    = document.createElement('canvas');
@@ -1428,8 +1428,10 @@
     scrubber.addEventListener('touchstart', () => { isScrubbing = true; });
     scrubber.addEventListener('input', () => {
       if (scMode && scWidget && scDuration) {
-        scWidget.seekTo(Math.round((scrubber.value / 1000) * scDuration));
-        currentTimeEl.textContent = fmt(Math.round((scrubber.value / 1000) * scDuration) / 1000);
+        const newPos = Math.round((scrubber.value / 1000) * scDuration);
+        scWidget.seekTo(newPos);
+        scLastPosition = newPos;
+        currentTimeEl.textContent = fmt(newPos / 1000);
         return;
       }
       if (audioEl && audioEl.duration) {
@@ -1881,114 +1883,120 @@
       }
     }
 
+    // Pre-process waveform → array of beat timestamps (ms).
+    // Uses local-maxima onset detection with a dynamic threshold (mean + 0.8σ)
+    // and enforces BEAT_COOLDOWN_MS minimum spacing — same as local audio.
+    function computeScBeats(samples, maxVal, durationMs) {
+      if (!samples?.length || !durationMs) return [];
+      const msPerSample = durationMs / samples.length;
+      const mean = samples.reduce((s, v) => s + v, 0) / samples.length;
+      const variance = samples.reduce((s, v) => s + (v - mean) ** 2, 0) / samples.length;
+      const threshold = mean + Math.sqrt(variance) * 0.8;
+      const beats = [];
+      let lastBeatMs = -BEAT_COOLDOWN_MS;
+      for (let i = 1; i < samples.length - 1; i++) {
+        const tMs = i * msPerSample;
+        if (tMs - lastBeatMs < BEAT_COOLDOWN_MS) continue;
+        if (samples[i] >= samples[i - 1] && samples[i] > samples[i + 1] && samples[i] >= threshold) {
+          beats.push(tMs);
+          lastBeatMs = tMs;
+        }
+      }
+      return beats;
+    }
+
+    function scReset() {
+      // Full state + UI reset between track loads
+      if (scWidget) {
+        try { scWidget.pause(); } catch {}
+        try {
+          const E = window.SC?.Widget?.Events;
+          if (E) ['READY','PLAY_PROGRESS','PLAY','PAUSE','FINISH']
+            .forEach(k => { try { scWidget.unbind(E[k]); } catch {} });
+        } catch {}
+        scWidget = null;
+      }
+      if (rafId && !audioEl) { cancelAnimationFrame(rafId); rafId = null; }
+      isPlaying = false; setPlayIcon(false);
+      scWaveform = null; scWaveformMax = 1; scDuration = 0;
+      scBeatPositions = []; scLastPosition = 0;
+      scrubber.value = 0;
+      currentTimeEl.textContent = '0:00';
+      totalTimeEl.textContent   = '0:00';
+      statusLabel.textContent   = 'Loading…';
+      document.getElementById('scLoadedDot').style.display  = 'none';
+      document.getElementById('scTrackMeta').style.display  = 'none';
+    }
+
     async function loadSCTrack(url) {
       document.getElementById('scResults').innerHTML = '';
-      document.getElementById('scLoadedDot').style.display = 'none';
-      setScMsg('Loading…');
+      scReset();
       await loadSCApi();
 
       const iframe = document.getElementById('scIframe');
       iframe.src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&color=%23ff0000&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
 
-      // Tear down old widget binding if any
-      if (scWidget) { try { scWidget.unbind(window.SC.Widget.Events.READY); } catch {} }
-
       scWidget = window.SC.Widget(iframe);
 
       scWidget.bind(window.SC.Widget.Events.READY, () => {
         document.getElementById('scResults').innerHTML = '';
-        scAmpHistory = [];
-        scPrevIdx    = 0;
+        statusLabel.textContent = 'Ready';
         scWidget.getDuration(d => {
           scDuration = d;
           totalTimeEl.textContent = fmt(d / 1000);
         });
         scWidget.getCurrentSound(sound => {
           if (!sound) return;
-          // Small loaded indicator in audio section
-          document.getElementById('scLoadedDot').style.display = '';
-          // Title + artist in player bar
-          document.getElementById('scPlayerTitle').textContent  = sound.title ?? '';
-          document.getElementById('scPlayerArtist').textContent = sound.user?.username ?? '';
-          document.getElementById('scTrackMeta').style.display  = '';
-          // Fetch waveform for visual reactivity
+          document.getElementById('scLoadedDot').style.display   = '';
+          document.getElementById('scPlayerTitle').textContent   = sound.title ?? '';
+          document.getElementById('scPlayerArtist').textContent  = sound.user?.username ?? '';
+          document.getElementById('scTrackMeta').style.display   = '';
           if (sound.waveform_url) {
             fetch(sound.waveform_url)
               .then(r => r.json())
               .then(data => {
-                scWaveform    = data.samples;
-                scWaveformMax = Math.max(...data.samples) || 1;
+                scWaveform     = data.samples;
+                scWaveformMax  = Math.max(...data.samples) || 1;
+                // Pre-compute beats once so PLAY_PROGRESS is just a lookup
+                scBeatPositions = computeScBeats(scWaveform, scWaveformMax, scDuration);
               })
               .catch(() => {});
           }
         });
       });
 
+      // Mirror local audio exactly: check which precomputed beats we've passed
+      // and call onBeat() — same function, same random-colour + pixel-jump logic.
       scWidget.bind(window.SC.Widget.Events.PLAY_PROGRESS, data => {
-        // Sync scrubber & time display
+        const pos = data.currentPosition;
         if (!isScrubbing && scDuration > 0) {
-          scrubber.value = Math.round((data.currentPosition / scDuration) * 1000);
-          currentTimeEl.textContent = fmt(data.currentPosition / 1000);
+          scrubber.value = Math.round((pos / scDuration) * 1000);
+          currentTimeEl.textContent = fmt(pos / 1000);
         }
-        if (!scWaveform) return;
-
-        const t   = data.currentPosition / (scDuration || 1);
-        const idx = Math.min(Math.floor(t * scWaveform.length), scWaveform.length - 1);
-
-        // Sample the max amplitude from prev index to current — catches transients
-        // that fall between infrequent PLAY_PROGRESS events (~200–250 ms apart)
-        let rawAmp = 0;
-        for (let i = Math.max(0, scPrevIdx); i <= idx; i++) {
-          if (scWaveform[i] > rawAmp) rawAmp = scWaveform[i];
+        if (scBeatPositions.length && !beatOnCooldown) {
+          const hit = scBeatPositions.find(b => b > scLastPosition && b <= pos);
+          if (hit !== undefined) {
+            beatOnCooldown = true;
+            setTimeout(() => { beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
+            onBeat();
+          }
         }
-        scPrevIdx = idx + 1;
-        const amp = rawAmp / scWaveformMax; // 0..1
-
-        // Rolling history (12 frames ≈ ~2.5 s) for context-aware detection
-        scAmpHistory.push(amp);
-        if (scAmpHistory.length > 12) scAmpHistory.shift();
-        const avg = scAmpHistory.reduce((a, b) => a + b, 0) / scAmpHistory.length;
-
-        // Onset: significantly above recent average → call onBeat() so random
-        // colours and the existing beat-flash all work identically to local audio
-        if (amp > avg * 1.3 && amp > 0.15 && !beatOnCooldown) {
-          beatOnCooldown = true;
-          setTimeout(() => { beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
-          onBeat();
-          return;
-        }
-
-        // Auto-gain: stretch amp to fill the full pixel-size range based on
-        // recent context so quiet and loud sections both stay visually reactive
-        const hi = Math.max(...scAmpHistory, 0.01);
-        const lo = Math.min(...scAmpHistory);
-        const span = hi - lo;
-        const norm = span > 0.02 ? (amp - lo) / span : amp;
-
-        const inRange = PIXEL_SIZES.filter(s => s >= minSize && s <= maxSize);
-        if (!inRange.length) return;
-        currentPixelSize = inRange[Math.round(norm * (inRange.length - 1))];
-        pxBadge.textContent = currentPixelSize + 'PX';
-        renderPixelSize(currentPixelSize);
+        scLastPosition = pos;
       });
 
       scWidget.bind(window.SC.Widget.Events.PLAY, () => {
-        isPlaying = true;
-        setPlayIcon(true);
+        isPlaying = true; setPlayIcon(true);
         statusLabel.textContent = 'Playing';
-        // Keep video frames rendering
         if (!rafId) { lastFrameTime = 0; rafId = requestAnimationFrame(tick); }
       });
 
       scWidget.bind(window.SC.Widget.Events.PAUSE, () => {
-        isPlaying = false;
-        setPlayIcon(false);
+        isPlaying = false; setPlayIcon(false);
         statusLabel.textContent = 'Paused';
       });
 
       scWidget.bind(window.SC.Widget.Events.FINISH, () => {
-        isPlaying = false;
-        setPlayIcon(false);
+        isPlaying = false; setPlayIcon(false);
         statusLabel.textContent = 'Done';
       });
     }
@@ -2001,7 +2009,7 @@
       if (rafId && !audioEl) { cancelAnimationFrame(rafId); rafId = null; }
       isPlaying = false; setPlayIcon(false);
       statusLabel.textContent = 'Ready';
-      scAmpHistory = []; scPrevIdx = 0;
+      scBeatPositions = []; scLastPosition = 0;
       // Hide SC elements in audio section and player
       document.getElementById('scPanel').style.display         = 'none';
       document.getElementById('scResults').innerHTML           = '';
