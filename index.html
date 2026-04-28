@@ -785,7 +785,7 @@
     </div>
 
     <!-- Row 3: Beat & FX -->
-    <div class="ctrl-row" style="grid-template-columns: 1fr 1fr 1fr 1fr">
+    <div class="ctrl-row" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr">
       <div class="control-cell">
         <span class="ctrl-label">Beat Amp. <span id="beatAmpLoValue">0</span>–<span id="beatAmpHiValue">255</span></span>
         <div class="dual-range">
@@ -818,6 +818,12 @@
           <div class="dual-range-track"><div class="dual-range-fill" id="pixelRangeFill"></div></div>
           <input type="range" id="minSizeSlider" min="0" max="7" value="0" step="1">
           <input type="range" id="maxSizeSlider" min="0" max="7" value="7" step="1">
+        </div>
+      </div>
+      <div class="control-cell">
+        <span class="ctrl-label">Cooldown <span id="cooldownValue">280</span>ms</span>
+        <div class="single-range">
+          <input type="range" id="cooldownSlider" min="100" max="600" value="280" step="10">
         </div>
       </div>
     </div>
@@ -861,7 +867,7 @@
     const TARGET_FPS     = 30;
     const FRAME_MS       = 1000 / TARGET_FPS;
     const FLUX_THRESHOLD = 1.6;
-    const BEAT_COOLDOWN_MS = 280;
+    let   BEAT_COOLDOWN_MS = 280;
     let   beatAmpLo = 0;
     let   beatAmpHi = 255;
     let   fluxMode  = true;
@@ -1724,6 +1730,19 @@
     minSizeSlider.addEventListener('input', updatePixelRange);
     maxSizeSlider.addEventListener('input', updatePixelRange);
     updatePixelRange();
+
+    // ─── Cooldown slider ──────────────────────────────────────────────────────
+    const cooldownSlider = document.getElementById('cooldownSlider');
+    const cooldownValue  = document.getElementById('cooldownValue');
+    cooldownSlider.addEventListener('input', () => {
+      BEAT_COOLDOWN_MS = parseInt(cooldownSlider.value);
+      cooldownValue.textContent = BEAT_COOLDOWN_MS;
+      // Recompute SC beat positions with new spacing
+      if (scMode && scWaveform && scDuration) {
+        scBeatPositions = computeScBeats(scWaveform, scDuration);
+        scLastPosition  = 0;
+      }
+    });
 
     // ─── Contrast dual slider ─────────────────────────────────────────────────
     function updateContrastFill() {
