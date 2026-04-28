@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 2'%3E%3Crect width='1' height='1' fill='black'/%3E%3Crect x='1' width='1' height='1' fill='red'/%3E%3Crect y='1' width='1' height='1' fill='red'/%3E%3Crect x='1' y='1' width='1' height='1' fill='black'/%3E%3C/svg%3E">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -469,6 +470,93 @@
     .swatch.blocked                   { filter: brightness(0.25); cursor: not-allowed; }
     .swatch[data-color="#000000"].blocked { filter: none; opacity: 0.35; border-color: #555; cursor: not-allowed; }
     .swatch.pool-active  { border-color: var(--white); outline: 1px solid #666; outline-offset: 2px; opacity: 1; }
+
+    /* ── Responsive ─────────────────────────────────────────────────────────── */
+
+    /* Tablet: collapse 4-col rows to 2-col */
+    @media (max-width: 860px) {
+      .ctrl-row--4 { grid-template-columns: 1fr 1fr; }
+      .ctrl-row[style*="grid-template-columns"] { grid-template-columns: 1fr 1fr !important; }
+      /* Even cells lose their right border so the right edge is clean */
+      .ctrl-row--4 .control-cell:nth-child(2n),
+      .ctrl-row[style*="grid-template-columns"] .control-cell:nth-child(2n) {
+        border-right: none;
+      }
+      /* Add bottom border between the two logical rows of wrapped cells */
+      .ctrl-row--4 .control-cell:nth-child(-n+2),
+      .ctrl-row[style*="grid-template-columns"] .control-cell:nth-child(-n+2) {
+        border-bottom: 1px solid var(--dim);
+      }
+    }
+
+    /* Mobile: single-column stack, scrollable */
+    @media (max-width: 600px) {
+      body {
+        height: auto;
+        min-height: 100svh;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+
+      /* Header: drop the centre tagline, keep wordmark + controls */
+      header {
+        grid-template-columns: 1fr auto;
+        padding: 8px 14px;
+      }
+      .tagline { display: none; }
+
+      .canvas-size-select {
+        font-size: 8px;
+        padding: 4px 8px;
+      }
+
+      /* Canvas stage: shrink so controls are reachable without scrolling too far */
+      .stage {
+        min-height: 40vw;
+        padding: 8px;
+      }
+
+      /* Collapse all control rows to a single column */
+      .ctrl-row,
+      .ctrl-row--2,
+      .ctrl-row--4 {
+        grid-template-columns: 1fr !important;
+      }
+
+      /* Control cells: tighter padding, swap right border for bottom border */
+      .control-cell {
+        padding: 10px 14px;
+        border-right: none !important;
+        border-bottom: 1px solid var(--dim);
+      }
+      .ctrl-row > .control-cell:last-child { border-bottom: none; }
+      /* Remove the inherited nth-child overrides from the tablet breakpoint */
+      .ctrl-row--4 .control-cell:nth-child(-n+2),
+      .ctrl-row[style*="grid-template-columns"] .control-cell:nth-child(-n+2) {
+        border-bottom: 1px solid var(--dim);
+      }
+
+      /* Media row: let slots wrap naturally */
+      .media-row { flex-wrap: wrap; gap: 6px; }
+      .img-slots  { flex-wrap: wrap; }
+
+      .file-name { max-width: 180px; }
+
+      /* Player: wrap scrubber to its own line */
+      .player {
+        padding: 10px 14px 20px;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .scrub-wrap {
+        order: 10;
+        width: 100%;
+        margin-top: 8px;
+      }
+      .time-row { bottom: -16px; }
+
+      .status-row { margin-left: auto; }
+    }
   </style>
 </head>
 <body>
