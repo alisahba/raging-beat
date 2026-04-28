@@ -608,6 +608,65 @@
       text-overflow: ellipsis;
     }
     .sc-msg { font-size: 9px; color: #555; padding: 4px 0; letter-spacing: .1em; }
+
+    /* ── Audio inline row ──────────────────────────────────────────────────── */
+    .audio-inline-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .audio-inline-row .mode-toggle { flex-shrink: 0; }
+    #localAudioPanel { flex: 1; min-width: 0; }
+    #scPanel {
+      flex: 1; min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #scPanel .sc-input { flex: 1; min-width: 0; }
+    .sc-loaded-dot {
+      font-size: 14px;
+      color: #4caf50;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    /* ── Player enhancements ───────────────────────────────────────────────── */
+    .player { background: #050505; border-top: 1px solid #1a1a1a; }
+
+    .sc-art {
+      width: 36px; height: 36px;
+      flex-shrink: 0;
+      overflow: hidden;
+      border: 1px solid #2a2a2a;
+    }
+    .sc-art img { width: 36px; height: 36px; object-fit: cover; display: block; }
+
+    .sc-track-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      max-width: 180px;
+      flex-shrink: 1;
+    }
+    .sc-player-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--white);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: .04em;
+    }
+    .sc-player-artist {
+      font-size: 9px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: .05em;
+    }
   </style>
 </head>
 <body>
@@ -664,37 +723,35 @@
       </div>
       <div class="control-cell">
         <span class="ctrl-label">Audio</span>
-        <div class="mode-toggle">
-          <button class="mode-btn active" id="srcLocalBtn">File</button>
-          <button class="mode-btn" id="srcScBtn">SoundCloud</button>
-        </div>
-        <div id="localAudioPanel">
-          <label class="file-btn">
-            <input type="file" id="audioInput" accept="audio/*">
-            <div class="file-btn-inner">
-              <div class="file-btn-square">
-                <svg width="12" height="12" viewBox="0 0 12 12">
-                  <rect x="1" y="3" width="10" height="8" fill="none" stroke="white" stroke-width="1"/>
-                  <polygon points="4,3 6,0 8,3"/>
-                </svg>
+        <div class="audio-inline-row">
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="srcLocalBtn">File</button>
+            <button class="mode-btn" id="srcScBtn">SoundCloud</button>
+          </div>
+          <div id="localAudioPanel">
+            <label class="file-btn">
+              <input type="file" id="audioInput" accept="audio/*">
+              <div class="file-btn-inner">
+                <div class="file-btn-square">
+                  <svg width="12" height="12" viewBox="0 0 12 12">
+                    <rect x="1" y="3" width="10" height="8" fill="none" stroke="white" stroke-width="1"/>
+                    <polygon points="4,3 6,0 8,3"/>
+                  </svg>
+                </div>
+                <span class="file-name" id="audioFilename">Choose audio</span>
               </div>
-              <span class="file-name" id="audioFilename">Choose audio</span>
-            </div>
-          </label>
-        </div>
-        <div id="scPanel" style="display:none">
-          <div class="sc-search-row">
-            <input type="text" id="scSearchInput" class="sc-input" placeholder="Search or paste SoundCloud URL…">
+            </label>
+          </div>
+          <div id="scPanel" style="display:none">
+            <input type="text" id="scSearchInput" class="sc-input" placeholder="Search or paste URL…">
             <button class="toggle-btn sc-go-btn" id="scSearchBtn">Go</button>
+            <span class="sc-loaded-dot" id="scLoadedDot" style="display:none" title="Track loaded">●</span>
           </div>
-          <div id="scResults"></div>
-          <div id="scTrackLoaded" style="display:none">
-            <span class="file-name loaded" id="scTrackName"></span>
-          </div>
-          <!-- iframe kept in DOM (invisible) so SC Widget API can communicate -->
-          <iframe id="scIframe" scrolling="no" frameborder="no" allow="autoplay"
-            style="position:absolute;width:0;height:0;border:none;pointer-events:none;opacity:0;"></iframe>
         </div>
+        <div id="scResults"></div>
+        <!-- iframe kept in DOM but invisible — SC Widget API communicates via postMessage -->
+        <iframe id="scIframe" scrolling="no" frameborder="no" allow="autoplay"
+          style="position:absolute;width:0;height:0;border:none;pointer-events:none;opacity:0;"></iframe>
       </div>
     </div>
 
@@ -776,6 +833,9 @@
   </div>
 
   <div class="player">
+    <div class="sc-art" id="scArt" style="display:none">
+      <img id="scArtImg" src="" alt="" width="36" height="36">
+    </div>
     <button class="play-btn" id="playBtn" title="Play / Pause">
       <svg id="playIcon" width="14" height="14" viewBox="0 0 14 14">
         <polygon points="3,1 13,7 3,13"/>
@@ -784,6 +844,10 @@
     <button class="rec-btn" id="recBtn" title="Record / Stop &amp; Save">
       <div class="rec-dot"></div>
     </button>
+    <div class="sc-track-meta" id="scTrackMeta" style="display:none">
+      <span class="sc-player-title" id="scPlayerTitle"></span>
+      <span class="sc-player-artist" id="scPlayerArtist"></span>
+    </div>
     <div class="scrub-wrap">
       <input type="range" id="scrubber" min="0" max="1000" value="0" step="1">
       <div class="time-row">
@@ -880,11 +944,12 @@
     let defaultBeatSrc   = null;   // AudioBufferSourceNode for built-in beat
 
     // ─── SoundCloud state ─────────────────────────────────────────────────────
-    let scMode       = false;
-    let scWidget     = null;
-    let scWaveform   = null;
+    let scMode        = false;
+    let scWidget      = null;
+    let scWaveform    = null;
     let scWaveformMax = 1;
-    let scDuration   = 0;
+    let scDuration    = 0;
+    let scPrevAmp     = 0;
 
     // ─── Offscreen canvases ───────────────────────────────────────────────────
     const colorCanvas    = document.createElement('canvas');
@@ -1824,7 +1889,7 @@
 
     async function loadSCTrack(url) {
       document.getElementById('scResults').innerHTML = '';
-      document.getElementById('scTrackLoaded').style.display = 'none';
+      document.getElementById('scLoadedDot').style.display = 'none';
       setScMsg('Loading…');
       await loadSCApi();
 
@@ -1838,16 +1903,24 @@
 
       scWidget.bind(window.SC.Widget.Events.READY, () => {
         document.getElementById('scResults').innerHTML = '';
+        scPrevAmp = 0;
         scWidget.getDuration(d => {
           scDuration = d;
           totalTimeEl.textContent = fmt(d / 1000);
         });
         scWidget.getCurrentSound(sound => {
           if (!sound) return;
-          // Show track title instead of the widget iframe
-          const name = sound.title ?? url;
-          document.getElementById('scTrackName').textContent = name;
-          document.getElementById('scTrackLoaded').style.display = '';
+          // Loaded indicator in audio section
+          document.getElementById('scLoadedDot').style.display = '';
+          // Artwork in player
+          const art = (sound.artwork_url || sound.user?.avatar_url || '').replace('-large', '-t67x67');
+          const artEl = document.getElementById('scArtImg');
+          if (art) { artEl.src = art; document.getElementById('scArt').style.display = ''; }
+          // Title + artist in player
+          document.getElementById('scPlayerTitle').textContent  = sound.title ?? '';
+          document.getElementById('scPlayerArtist').textContent = sound.user?.username ?? '';
+          document.getElementById('scTrackMeta').style.display  = '';
+          // Fetch waveform for visual reactivity
           if (sound.waveform_url) {
             fetch(sound.waveform_url)
               .then(r => r.json())
@@ -1866,24 +1939,25 @@
           scrubber.value = Math.round((data.currentPosition / scDuration) * 1000);
           currentTimeEl.textContent = fmt(data.currentPosition / 1000);
         }
-        // Drive pixel size from waveform amplitude
         if (!scWaveform) return;
         const t   = data.currentPosition / (scDuration || 1);
         const idx = Math.min(Math.floor(t * scWaveform.length), scWaveform.length - 1);
         const amp = scWaveform[idx] / scWaveformMax; // 0..1
+        const rise = amp - scPrevAmp;
+        scPrevAmp = amp;
+        // Onset detected — use the same onBeat() path so random colours work too
+        if (rise > 0.1 && !beatOnCooldown) {
+          beatOnCooldown = true;
+          setTimeout(() => { beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
+          onBeat();
+          return;
+        }
+        // Continuous amplitude → pixel size (always render so visuals stay reactive)
         const inRange = PIXEL_SIZES.filter(s => s >= minSize && s <= maxSize);
         if (!inRange.length) return;
-        const newSize = inRange[Math.round(amp * (inRange.length - 1))];
-        if (newSize !== currentPixelSize) {
-          currentPixelSize = newSize;
-          pxBadge.textContent = currentPixelSize + 'PX';
-          renderPixelSize(currentPixelSize);
-        }
-        if (amp > 0.72 && !beatOnCooldown) {
-          beatOnCooldown = true;
-          beatDot.classList.add('flash');
-          setTimeout(() => { beatDot.classList.remove('flash'); beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
-        }
+        currentPixelSize = inRange[Math.round(amp * (inRange.length - 1))];
+        pxBadge.textContent = currentPixelSize + 'PX';
+        renderPixelSize(currentPixelSize);
       });
 
       scWidget.bind(window.SC.Widget.Events.PLAY, () => {
@@ -1911,15 +1985,17 @@
     document.getElementById('srcLocalBtn').addEventListener('click', () => {
       if (!scMode) return;
       scMode = false;
-      // Stop SC playback
       if (scWidget) { try { scWidget.pause(); } catch {} }
       if (rafId && !audioEl) { cancelAnimationFrame(rafId); rafId = null; }
-      isPlaying = false;
-      setPlayIcon(false);
+      isPlaying = false; setPlayIcon(false);
       statusLabel.textContent = 'Ready';
-      document.getElementById('scPanel').style.display        = 'none';
-      document.getElementById('scTrackLoaded').style.display  = 'none';
+      scPrevAmp = 0;
+      // Hide SC elements in audio section and player
+      document.getElementById('scPanel').style.display         = 'none';
       document.getElementById('scResults').innerHTML           = '';
+      document.getElementById('scLoadedDot').style.display     = 'none';
+      document.getElementById('scArt').style.display           = 'none';
+      document.getElementById('scTrackMeta').style.display     = 'none';
       document.getElementById('localAudioPanel').style.display = '';
       document.getElementById('srcLocalBtn').classList.add('active');
       document.getElementById('srcScBtn').classList.remove('active');
@@ -1928,11 +2004,10 @@
     document.getElementById('srcScBtn').addEventListener('click', () => {
       if (scMode) return;
       scMode = true;
-      // Pause local audio if playing
       if (audioEl && isPlaying) { audioEl.pause(); cancelAnimationFrame(rafId); rafId = null; isPlaying = false; setPlayIcon(false); }
       statusLabel.textContent = 'Ready';
       document.getElementById('localAudioPanel').style.display = 'none';
-      document.getElementById('scPanel').style.display         = '';
+      document.getElementById('scPanel').style.display         = 'flex';
       document.getElementById('srcScBtn').classList.add('active');
       document.getElementById('srcLocalBtn').classList.remove('active');
     });
