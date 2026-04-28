@@ -634,14 +634,6 @@
     /* ── Player enhancements ───────────────────────────────────────────────── */
     .player { background: #050505; border-top: 1px solid #1a1a1a; }
 
-    .sc-art {
-      width: 36px; height: 36px;
-      flex-shrink: 0;
-      overflow: hidden;
-      border: 1px solid #2a2a2a;
-    }
-    .sc-art img { width: 36px; height: 36px; object-fit: cover; display: block; }
-
     .sc-track-meta {
       display: flex;
       flex-direction: column;
@@ -833,9 +825,6 @@
   </div>
 
   <div class="player">
-    <div class="sc-art" id="scArt" style="display:none">
-      <img id="scArtImg" src="" alt="" width="36" height="36">
-    </div>
     <button class="play-btn" id="playBtn" title="Play / Pause">
       <svg id="playIcon" width="14" height="14" viewBox="0 0 14 14">
         <polygon points="3,1 13,7 3,13"/>
@@ -949,7 +938,8 @@
     let scWaveform    = null;
     let scWaveformMax = 1;
     let scDuration    = 0;
-    let scPrevAmp     = 0;
+    let scAmpHistory  = [];
+    let scPrevIdx     = 0;
 
     // ─── Offscreen canvases ───────────────────────────────────────────────────
     const colorCanvas    = document.createElement('canvas');
@@ -1513,6 +1503,10 @@
       if (!file) return;
       audioFilename.textContent = file.name;
       audioFilename.classList.add('loaded');
+      // Show track name in player bar (strip extension)
+      document.getElementById('scPlayerTitle').textContent  = file.name.replace(/\.[^.]+$/, '');
+      document.getElementById('scPlayerArtist').textContent = '';
+      document.getElementById('scTrackMeta').style.display  = '';
       setupAudio(file);
     });
 
@@ -1903,20 +1897,17 @@
 
       scWidget.bind(window.SC.Widget.Events.READY, () => {
         document.getElementById('scResults').innerHTML = '';
-        scPrevAmp = 0;
+        scAmpHistory = [];
+        scPrevIdx    = 0;
         scWidget.getDuration(d => {
           scDuration = d;
           totalTimeEl.textContent = fmt(d / 1000);
         });
         scWidget.getCurrentSound(sound => {
           if (!sound) return;
-          // Loaded indicator in audio section
+          // Small loaded indicator in audio section
           document.getElementById('scLoadedDot').style.display = '';
-          // Artwork in player
-          const art = (sound.artwork_url || sound.user?.avatar_url || '').replace('-large', '-t67x67');
-          const artEl = document.getElementById('scArtImg');
-          if (art) { artEl.src = art; document.getElementById('scArt').style.display = ''; }
-          // Title + artist in player
+          // Title + artist in player bar
           document.getElementById('scPlayerTitle').textContent  = sound.title ?? '';
           document.getElementById('scPlayerArtist').textContent = sound.user?.username ?? '';
           document.getElementById('scTrackMeta').style.display  = '';
@@ -1940,22 +1931,43 @@
           currentTimeEl.textContent = fmt(data.currentPosition / 1000);
         }
         if (!scWaveform) return;
+
         const t   = data.currentPosition / (scDuration || 1);
         const idx = Math.min(Math.floor(t * scWaveform.length), scWaveform.length - 1);
-        const amp = scWaveform[idx] / scWaveformMax; // 0..1
-        const rise = amp - scPrevAmp;
-        scPrevAmp = amp;
-        // Onset detected — use the same onBeat() path so random colours work too
-        if (rise > 0.1 && !beatOnCooldown) {
+
+        // Sample the max amplitude from prev index to current — catches transients
+        // that fall between infrequent PLAY_PROGRESS events (~200–250 ms apart)
+        let rawAmp = 0;
+        for (let i = Math.max(0, scPrevIdx); i <= idx; i++) {
+          if (scWaveform[i] > rawAmp) rawAmp = scWaveform[i];
+        }
+        scPrevIdx = idx + 1;
+        const amp = rawAmp / scWaveformMax; // 0..1
+
+        // Rolling history (12 frames ≈ ~2.5 s) for context-aware detection
+        scAmpHistory.push(amp);
+        if (scAmpHistory.length > 12) scAmpHistory.shift();
+        const avg = scAmpHistory.reduce((a, b) => a + b, 0) / scAmpHistory.length;
+
+        // Onset: significantly above recent average → call onBeat() so random
+        // colours and the existing beat-flash all work identically to local audio
+        if (amp > avg * 1.3 && amp > 0.15 && !beatOnCooldown) {
           beatOnCooldown = true;
           setTimeout(() => { beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
           onBeat();
           return;
         }
-        // Continuous amplitude → pixel size (always render so visuals stay reactive)
+
+        // Auto-gain: stretch amp to fill the full pixel-size range based on
+        // recent context so quiet and loud sections both stay visually reactive
+        const hi = Math.max(...scAmpHistory, 0.01);
+        const lo = Math.min(...scAmpHistory);
+        const span = hi - lo;
+        const norm = span > 0.02 ? (amp - lo) / span : amp;
+
         const inRange = PIXEL_SIZES.filter(s => s >= minSize && s <= maxSize);
         if (!inRange.length) return;
-        currentPixelSize = inRange[Math.round(amp * (inRange.length - 1))];
+        currentPixelSize = inRange[Math.round(norm * (inRange.length - 1))];
         pxBadge.textContent = currentPixelSize + 'PX';
         renderPixelSize(currentPixelSize);
       });
@@ -1989,12 +2001,11 @@
       if (rafId && !audioEl) { cancelAnimationFrame(rafId); rafId = null; }
       isPlaying = false; setPlayIcon(false);
       statusLabel.textContent = 'Ready';
-      scPrevAmp = 0;
+      scAmpHistory = []; scPrevIdx = 0;
       // Hide SC elements in audio section and player
       document.getElementById('scPanel').style.display         = 'none';
       document.getElementById('scResults').innerHTML           = '';
       document.getElementById('scLoadedDot').style.display     = 'none';
-      document.getElementById('scArt').style.display           = 'none';
       document.getElementById('scTrackMeta').style.display     = 'none';
       document.getElementById('localAudioPanel').style.display = '';
       document.getElementById('srcLocalBtn').classList.add('active');
@@ -2006,6 +2017,7 @@
       scMode = true;
       if (audioEl && isPlaying) { audioEl.pause(); cancelAnimationFrame(rafId); rafId = null; isPlaying = false; setPlayIcon(false); }
       statusLabel.textContent = 'Ready';
+      document.getElementById('scTrackMeta').style.display     = 'none';
       document.getElementById('localAudioPanel').style.display = 'none';
       document.getElementById('scPanel').style.display         = 'flex';
       document.getElementById('srcScBtn').classList.add('active');
