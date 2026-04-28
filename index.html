@@ -557,6 +557,57 @@
 
       .status-row { margin-left: auto; }
     }
+
+    /* ── SoundCloud panel ──────────────────────────────────────────────────── */
+    .sc-search-row { display: flex; gap: 6px; align-items: center; }
+
+    .sc-input {
+      flex: 1; min-width: 0;
+      background: none;
+      border: 1px solid #333;
+      color: var(--white);
+      font-family: var(--font);
+      font-size: 10px;
+      padding: 5px 8px;
+      outline: none;
+      transition: border-color 80ms;
+    }
+    .sc-input:focus { border-color: #888; }
+    .sc-input::placeholder { color: #555; }
+    .sc-go-btn { flex-shrink: 0; padding: 5px 10px; }
+
+    #scResults {
+      margin-top: 6px;
+      max-height: 130px;
+      overflow-y: auto;
+    }
+    .sc-result {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 6px 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #1a1a1a;
+      transition: background 80ms;
+    }
+    .sc-result:last-child { border-bottom: none; }
+    .sc-result:hover { background: #181818; }
+    .sc-result-title {
+      font-size: 10px;
+      color: var(--white);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sc-result-user {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: .05em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sc-msg { font-size: 9px; color: #555; padding: 4px 0; letter-spacing: .1em; }
   </style>
 </head>
 <body>
@@ -613,18 +664,34 @@
       </div>
       <div class="control-cell">
         <span class="ctrl-label">Audio</span>
-        <label class="file-btn">
-          <input type="file" id="audioInput" accept="audio/*">
-          <div class="file-btn-inner">
-            <div class="file-btn-square">
-              <svg width="12" height="12" viewBox="0 0 12 12">
-                <rect x="1" y="3" width="10" height="8" fill="none" stroke="white" stroke-width="1"/>
-                <polygon points="4,3 6,0 8,3"/>
-              </svg>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="srcLocalBtn">File</button>
+          <button class="mode-btn" id="srcScBtn">SoundCloud</button>
+        </div>
+        <div id="localAudioPanel">
+          <label class="file-btn">
+            <input type="file" id="audioInput" accept="audio/*">
+            <div class="file-btn-inner">
+              <div class="file-btn-square">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                  <rect x="1" y="3" width="10" height="8" fill="none" stroke="white" stroke-width="1"/>
+                  <polygon points="4,3 6,0 8,3"/>
+                </svg>
+              </div>
+              <span class="file-name" id="audioFilename">Choose audio</span>
             </div>
-            <span class="file-name" id="audioFilename">Choose audio</span>
+          </label>
+        </div>
+        <div id="scPanel" style="display:none">
+          <div class="sc-search-row">
+            <input type="text" id="scSearchInput" class="sc-input" placeholder="Search or paste SoundCloud URL…">
+            <button class="toggle-btn sc-go-btn" id="scSearchBtn">Go</button>
           </div>
-        </label>
+          <div id="scResults"></div>
+          <div id="scPlayerWrap" style="display:none">
+            <iframe id="scIframe" scrolling="no" frameborder="no" allow="autoplay" style="width:100%;height:60px;border:none;display:block;margin-top:8px;"></iframe>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -808,6 +875,13 @@
     let recordedChunks   = [];
     let audioRecordDest  = null;
     let defaultBeatSrc   = null;   // AudioBufferSourceNode for built-in beat
+
+    // ─── SoundCloud state ─────────────────────────────────────────────────────
+    let scMode       = false;
+    let scWidget     = null;
+    let scWaveform   = null;
+    let scWaveformMax = 1;
+    let scDuration   = 0;
 
     // ─── Offscreen canvases ───────────────────────────────────────────────────
     const colorCanvas    = document.createElement('canvas');
@@ -1250,6 +1324,7 @@
 
     // ─── Player controls ──────────────────────────────────────────────────────
     function togglePlay() {
+      if (scMode && scWidget) { scWidget.toggle(); return; }
       if (!audioEl) {
         // No audio loaded — use built-in beat
         if (isPlaying) {
@@ -1294,6 +1369,11 @@
     scrubber.addEventListener('mousedown', () => { isScrubbing = true; });
     scrubber.addEventListener('touchstart', () => { isScrubbing = true; });
     scrubber.addEventListener('input', () => {
+      if (scMode && scWidget && scDuration) {
+        scWidget.seekTo(Math.round((scrubber.value / 1000) * scDuration));
+        currentTimeEl.textContent = fmt(Math.round((scrubber.value / 1000) * scDuration) / 1000);
+        return;
+      }
       if (audioEl && audioEl.duration) {
         audioEl.currentTime = (scrubber.value / 1000) * audioEl.duration;
         currentTimeEl.textContent = fmt(audioEl.currentTime);
@@ -1678,6 +1758,184 @@
       const s = Math.floor(sec % 60).toString().padStart(2, '0');
       return `${m}:${s}`;
     }
+
+    // ─── Spacebar play / pause ────────────────────────────────────────────────
+    document.addEventListener('keydown', e => {
+      if (e.code !== 'Space') return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      e.preventDefault();
+      togglePlay();
+    });
+
+    // ─── SoundCloud integration ───────────────────────────────────────────────
+    const SC_CLIENT_ID = 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX';
+
+    function loadSCApi() {
+      return new Promise(resolve => {
+        if (window.SC) { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://w.soundcloud.com/player/api.js';
+        s.onload = resolve;
+        document.head.appendChild(s);
+      });
+    }
+
+    function setScMsg(html) {
+      document.getElementById('scResults').innerHTML =
+        `<p class="sc-msg">${html}</p>`;
+    }
+
+    function renderSCResults(tracks) {
+      const el = document.getElementById('scResults');
+      if (!tracks.length) { setScMsg('No results found.'); return; }
+      el.innerHTML = tracks.map(t => `
+        <div class="sc-result" data-url="${t.permalink_url}">
+          <span class="sc-result-title">${t.title}</span>
+          <span class="sc-result-user">${t.user?.username ?? ''}</span>
+        </div>`).join('');
+      el.querySelectorAll('.sc-result').forEach(r => {
+        r.addEventListener('click', () => loadSCTrack(r.dataset.url));
+      });
+    }
+
+    async function scSearch(query) {
+      query = query.trim();
+      if (!query) return;
+      if (query.includes('soundcloud.com/')) {
+        loadSCTrack(query);
+        return;
+      }
+      setScMsg('Searching…');
+      try {
+        const r = await fetch(
+          `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&client_id=${SC_CLIENT_ID}&limit=6`
+        );
+        if (!r.ok) throw new Error('api error');
+        const data = await r.json();
+        renderSCResults(data.collection || []);
+      } catch {
+        setScMsg('Paste a SoundCloud track URL and press Go.');
+      }
+    }
+
+    async function loadSCTrack(url) {
+      document.getElementById('scResults').innerHTML = '';
+      document.getElementById('scPlayerWrap').style.display = '';
+      setScMsg('Loading…');
+      await loadSCApi();
+
+      const iframe = document.getElementById('scIframe');
+      iframe.src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&color=%23ff0000&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
+
+      // Tear down old widget binding if any
+      if (scWidget) { try { scWidget.unbind(window.SC.Widget.Events.READY); } catch {} }
+
+      scWidget = window.SC.Widget(iframe);
+
+      scWidget.bind(window.SC.Widget.Events.READY, () => {
+        document.getElementById('scResults').innerHTML = '';
+        scWidget.getDuration(d => {
+          scDuration = d;
+          totalTimeEl.textContent = fmt(d / 1000);
+        });
+        scWidget.getCurrentSound(sound => {
+          if (!sound?.waveform_url) return;
+          fetch(sound.waveform_url)
+            .then(r => r.json())
+            .then(data => {
+              scWaveform   = data.samples;
+              scWaveformMax = Math.max(...data.samples) || 1;
+            })
+            .catch(() => {});
+        });
+      });
+
+      scWidget.bind(window.SC.Widget.Events.PLAY_PROGRESS, data => {
+        // Sync scrubber & time display
+        if (!isScrubbing && scDuration > 0) {
+          scrubber.value = Math.round((data.currentPosition / scDuration) * 1000);
+          currentTimeEl.textContent = fmt(data.currentPosition / 1000);
+        }
+        // Drive pixel size from waveform amplitude
+        if (!scWaveform) return;
+        const t   = data.currentPosition / (scDuration || 1);
+        const idx = Math.min(Math.floor(t * scWaveform.length), scWaveform.length - 1);
+        const amp = scWaveform[idx] / scWaveformMax; // 0..1
+        const inRange = PIXEL_SIZES.filter(s => s >= minSize && s <= maxSize);
+        if (!inRange.length) return;
+        const newSize = inRange[Math.round(amp * (inRange.length - 1))];
+        if (newSize !== currentPixelSize) {
+          currentPixelSize = newSize;
+          pxBadge.textContent = currentPixelSize + 'PX';
+          renderPixelSize(currentPixelSize);
+        }
+        if (amp > 0.72 && !beatOnCooldown) {
+          beatOnCooldown = true;
+          beatDot.classList.add('flash');
+          setTimeout(() => { beatDot.classList.remove('flash'); beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
+        }
+      });
+
+      scWidget.bind(window.SC.Widget.Events.PLAY, () => {
+        isPlaying = true;
+        setPlayIcon(true);
+        statusLabel.textContent = 'Playing';
+        // Keep video frames rendering
+        if (!rafId) { lastFrameTime = 0; rafId = requestAnimationFrame(tick); }
+      });
+
+      scWidget.bind(window.SC.Widget.Events.PAUSE, () => {
+        isPlaying = false;
+        setPlayIcon(false);
+        statusLabel.textContent = 'Paused';
+      });
+
+      scWidget.bind(window.SC.Widget.Events.FINISH, () => {
+        isPlaying = false;
+        setPlayIcon(false);
+        statusLabel.textContent = 'Done';
+      });
+    }
+
+    // ─── Audio source toggle ──────────────────────────────────────────────────
+    document.getElementById('srcLocalBtn').addEventListener('click', () => {
+      if (!scMode) return;
+      scMode = false;
+      // Stop SC playback
+      if (scWidget) { try { scWidget.pause(); } catch {} }
+      if (rafId && !audioEl) { cancelAnimationFrame(rafId); rafId = null; }
+      isPlaying = false;
+      setPlayIcon(false);
+      statusLabel.textContent = 'Ready';
+      document.getElementById('scPanel').style.display       = 'none';
+      document.getElementById('localAudioPanel').style.display = '';
+      document.getElementById('srcLocalBtn').classList.add('active');
+      document.getElementById('srcScBtn').classList.remove('active');
+    });
+
+    document.getElementById('srcScBtn').addEventListener('click', () => {
+      if (scMode) return;
+      scMode = true;
+      // Pause local audio if playing
+      if (audioEl && isPlaying) { audioEl.pause(); cancelAnimationFrame(rafId); rafId = null; isPlaying = false; setPlayIcon(false); }
+      statusLabel.textContent = 'Ready';
+      document.getElementById('localAudioPanel').style.display = 'none';
+      document.getElementById('scPanel').style.display         = '';
+      document.getElementById('srcScBtn').classList.add('active');
+      document.getElementById('srcLocalBtn').classList.remove('active');
+    });
+
+    document.getElementById('scSearchBtn').addEventListener('click', () => {
+      scSearch(document.getElementById('scSearchInput').value);
+    });
+    document.getElementById('scSearchInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') scSearch(e.target.value);
+    });
+
+    // ─── tick: skip audio analysis when SC is driving visuals ────────────────
+    // (tick() already guards checkBeat() with analyser being null-safe)
+
     loadDefaultImage();
   </script>
 
