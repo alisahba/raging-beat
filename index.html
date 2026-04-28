@@ -1884,20 +1884,27 @@
     }
 
     // Pre-process waveform → array of beat timestamps (ms).
-    // Uses local-maxima onset detection with a dynamic threshold (mean + 0.8σ)
-    // and enforces BEAT_COOLDOWN_MS minimum spacing — same as local audio.
-    function computeScBeats(samples, maxVal, durationMs) {
+    // Uses half-wave rectified flux (onset strength) so only sudden amplitude
+    // rises (transients/beats) are detected — not sustained loud sections.
+    function computeScBeats(samples, durationMs) {
       if (!samples?.length || !durationMs) return [];
-      const msPerSample = durationMs / samples.length;
-      const mean = samples.reduce((s, v) => s + v, 0) / samples.length;
-      const variance = samples.reduce((s, v) => s + (v - mean) ** 2, 0) / samples.length;
-      const threshold = mean + Math.sqrt(variance) * 0.8;
+      const n = samples.length;
+      const msPerSample = durationMs / n;
+
+      // Onset strength: positive amplitude flux — large spikes = beat transients
+      const onset = new Array(n).fill(0);
+      for (let i = 1; i < n; i++) onset[i] = Math.max(0, samples[i] - samples[i - 1]);
+
+      const mean = onset.reduce((s, v) => s + v, 0) / n;
+      const variance = onset.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
+      const threshold = mean + Math.sqrt(variance) * 1.5;
+
       const beats = [];
       let lastBeatMs = -BEAT_COOLDOWN_MS;
-      for (let i = 1; i < samples.length - 1; i++) {
+      for (let i = 1; i < n - 1; i++) {
         const tMs = i * msPerSample;
         if (tMs - lastBeatMs < BEAT_COOLDOWN_MS) continue;
-        if (samples[i] >= samples[i - 1] && samples[i] > samples[i + 1] && samples[i] >= threshold) {
+        if (onset[i] > onset[i - 1] && onset[i] > onset[i + 1] && onset[i] >= threshold) {
           beats.push(tMs);
           lastBeatMs = tMs;
         }
@@ -1957,8 +1964,7 @@
               .then(data => {
                 scWaveform     = data.samples;
                 scWaveformMax  = Math.max(...data.samples) || 1;
-                // Pre-compute beats once so PLAY_PROGRESS is just a lookup
-                scBeatPositions = computeScBeats(scWaveform, scWaveformMax, scDuration);
+                scBeatPositions = computeScBeats(scWaveform, scDuration);
               })
               .catch(() => {});
           }
@@ -1973,13 +1979,9 @@
           scrubber.value = Math.round((pos / scDuration) * 1000);
           currentTimeEl.textContent = fmt(pos / 1000);
         }
-        if (scBeatPositions.length && !beatOnCooldown) {
+        if (scBeatPositions.length) {
           const hit = scBeatPositions.find(b => b > scLastPosition && b <= pos);
-          if (hit !== undefined) {
-            beatOnCooldown = true;
-            setTimeout(() => { beatOnCooldown = false; }, BEAT_COOLDOWN_MS);
-            onBeat();
-          }
+          if (hit !== undefined) onBeat();
         }
         scLastPosition = pos;
       });
