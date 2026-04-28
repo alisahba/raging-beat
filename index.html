@@ -688,9 +688,12 @@
             <button class="toggle-btn sc-go-btn" id="scSearchBtn">Go</button>
           </div>
           <div id="scResults"></div>
-          <div id="scPlayerWrap" style="display:none">
-            <iframe id="scIframe" scrolling="no" frameborder="no" allow="autoplay" style="width:100%;height:60px;border:none;display:block;margin-top:8px;"></iframe>
+          <div id="scTrackLoaded" style="display:none">
+            <span class="file-name loaded" id="scTrackName"></span>
           </div>
+          <!-- iframe kept in DOM (invisible) so SC Widget API can communicate -->
+          <iframe id="scIframe" scrolling="no" frameborder="no" allow="autoplay"
+            style="position:absolute;width:0;height:0;border:none;pointer-events:none;opacity:0;"></iframe>
         </div>
       </div>
     </div>
@@ -1821,7 +1824,7 @@
 
     async function loadSCTrack(url) {
       document.getElementById('scResults').innerHTML = '';
-      document.getElementById('scPlayerWrap').style.display = '';
+      document.getElementById('scTrackLoaded').style.display = 'none';
       setScMsg('Loading…');
       await loadSCApi();
 
@@ -1840,14 +1843,20 @@
           totalTimeEl.textContent = fmt(d / 1000);
         });
         scWidget.getCurrentSound(sound => {
-          if (!sound?.waveform_url) return;
-          fetch(sound.waveform_url)
-            .then(r => r.json())
-            .then(data => {
-              scWaveform   = data.samples;
-              scWaveformMax = Math.max(...data.samples) || 1;
-            })
-            .catch(() => {});
+          if (!sound) return;
+          // Show track title instead of the widget iframe
+          const name = sound.title ?? url;
+          document.getElementById('scTrackName').textContent = name;
+          document.getElementById('scTrackLoaded').style.display = '';
+          if (sound.waveform_url) {
+            fetch(sound.waveform_url)
+              .then(r => r.json())
+              .then(data => {
+                scWaveform    = data.samples;
+                scWaveformMax = Math.max(...data.samples) || 1;
+              })
+              .catch(() => {});
+          }
         });
       });
 
@@ -1908,7 +1917,9 @@
       isPlaying = false;
       setPlayIcon(false);
       statusLabel.textContent = 'Ready';
-      document.getElementById('scPanel').style.display       = 'none';
+      document.getElementById('scPanel').style.display        = 'none';
+      document.getElementById('scTrackLoaded').style.display  = 'none';
+      document.getElementById('scResults').innerHTML           = '';
       document.getElementById('localAudioPanel').style.display = '';
       document.getElementById('srcLocalBtn').classList.add('active');
       document.getElementById('srcScBtn').classList.remove('active');
