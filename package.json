@@ -1,0 +1,14 @@
+{
+  "name": "raging-beat",
+  "private": true,
+  "type": "module",
+  "description": "Audio-reactive image renderer. Static site, no build step.",
+  "scripts": {
+    "serve": "node tests/serve.mjs 8000",
+    "test": "node tests/fft.test.mjs && node tests/analyzer.test.mjs && node tests/mux.test.mjs",
+    "test:browser": "node tests/browser.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
